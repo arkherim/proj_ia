@@ -1,6 +1,14 @@
 [browser]
 gatherUsageStats = false
 
+[theme]
+base = "dark"
+primaryColor = "#93b4ff"
+backgroundColor = "#0f1a20"
+secondaryBackgroundColor = "#17262e"
+textColor = "#e6eef2"
+font = "sans serif"
+
 [server]
 headless = true
 showEmailPrompt = false

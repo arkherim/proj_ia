@@ -59,9 +59,3 @@ def baixar_csvs() -> None:
         raise FileNotFoundError(f"CSV(s) ausentes: {', '.join(ausentes)}")
 
 
-def main() -> None:
-    baixar_csvs()
-
-
-if __name__ == "__main__":
-    main()

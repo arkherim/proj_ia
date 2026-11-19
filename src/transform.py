@@ -9,7 +9,6 @@ DIRETORIO_CSV = DIRETORIO_RAIZ / "data" / "csv"
 
 
 def read_csv(nome_arquivo: str) -> pd.DataFrame:
-    """Carrega um CSV de data/csv/ ou informa como obtê-lo."""
     caminho_csv = DIRETORIO_CSV / nome_arquivo
     if not caminho_csv.is_file():
         raise FileNotFoundError(
@@ -20,15 +19,12 @@ def read_csv(nome_arquivo: str) -> pd.DataFrame:
 
 
 def limpar_texto(texto: object) -> str:
-    """Remove URLs e normaliza caixa e espaços."""
     texto_limpo = str(texto).lower()
     texto_limpo = re.sub(r"https?://\S+|www\.\S+", " ", texto_limpo)
     return re.sub(r"\s+", " ", texto_limpo).strip()
 
 
-def transform_reviews() -> pd.DataFrame:
-    """Limpa avaliações e preserva as notas originais."""
-    avaliacoes_originais = read_csv("olist_order_reviews_dataset.csv")
+def transform_reviews(avaliacoes_originais: pd.DataFrame) -> pd.DataFrame:
     registros = [f"Avaliações no CSV: {len(avaliacoes_originais):,}"]
 
     avaliacoes = avaliacoes_originais.dropna(
@@ -70,7 +66,6 @@ def transform_reviews() -> pd.DataFrame:
 
 
 def transform_deliveries(avaliacoes: pd.DataFrame) -> pd.DataFrame:
-    """Calcula atraso das entregas dos pedidos que têm avaliação."""
     pedidos = read_csv("olist_orders_dataset.csv")
     colunas_entrega = [
         "order_id",
@@ -96,7 +91,6 @@ def transform_deliveries(avaliacoes: pd.DataFrame) -> pd.DataFrame:
 def transform_review_products(
     avaliacoes: pd.DataFrame,
 ) -> tuple[pd.DataFrame, int]:
-    """Liga avaliações às categorias de produto em pedidos de item único."""
     itens = read_csv("olist_order_items_dataset.csv")
     produtos = read_csv("olist_products_dataset.csv")
     traducao = read_csv("product_category_name_translation.csv")
@@ -140,13 +134,14 @@ def transform_review_products(
 
 
 def transform_all() -> dict[str, pd.DataFrame]:
-    """Executa as transformações e retorna as tabelas prontas para gravação."""
-    avaliacoes = transform_reviews()
+    reviews = read_csv("olist_order_reviews_dataset.csv")
+    avaliacoes = transform_reviews(reviews)
     entregas = transform_deliveries(avaliacoes)
     avaliacoes_produtos, quantidade_excluida = transform_review_products(
         avaliacoes
     )
     dados = {
+        "reviews": reviews,
         "reviews_clean": avaliacoes,
         "review_product": avaliacoes_produtos,
         "review_delivery": entregas,

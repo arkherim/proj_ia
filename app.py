@@ -1,21 +1,13 @@
-"""Executa a ingestão de dados e inicia o painel Streamlit."""
-
 import importlib.util
 import subprocess
 import sys
 from pathlib import Path
 
-
 ROOT_DIR = Path(__file__).resolve().parent
-ETL_SCRIPTS = (
-    "src/get_dataset.py",
-    "src/prepare_data.py",
-)
-REQUIRED_MODULES = ("kagglehub", "pandas", "streamlit")
+REQUIRED_MODULES = ("kagglehub", "pandas", "sklearn", "streamlit", "joblib")
 
 
 def check_dependencies() -> None:
-    """Confere dependências antes de iniciar o download do dataset."""
     missing = [name for name in REQUIRED_MODULES if importlib.util.find_spec(name) is None]
     if missing:
         packages = ", ".join(missing)
@@ -26,16 +18,22 @@ def check_dependencies() -> None:
 
 
 def main() -> None:
-    """Executa as etapas do pipeline e abre o painel de avaliações."""
     check_dependencies()
-    for script in ETL_SCRIPTS:
-        print(f"\nExecutando {script}...", flush=True)
-        try:
-            subprocess.run(
-                [sys.executable, str(ROOT_DIR / script)], cwd=ROOT_DIR, check=True
-            )
-        except subprocess.CalledProcessError as erro:
-            raise SystemExit(f"A etapa {script} falhou (código {erro.returncode}).") from None
+
+    from src.get_dataset import baixar_csvs
+    from src.load_database import save_tables
+    from src.train_model import train_sentiment_model
+    from src.transform import transform_all
+
+    print("\nBaixando o dataset...", flush=True)
+    baixar_csvs()
+    print("\nTransformando os dados...", flush=True)
+    tables = transform_all()
+    print("\nCarregando as tabelas no SQLite...", flush=True)
+    save_tables(tables)
+    print(f"Banco SQLite atualizado: {ROOT_DIR / 'data' / 'database' / 'olist.db'}")
+    print("\nTreinando e avaliando o modelo de sentimento...", flush=True)
+    train_sentiment_model()
 
     subprocess.run(
         [
@@ -43,7 +41,7 @@ def main() -> None:
             "-m",
             "streamlit",
             "run",
-            str(ROOT_DIR / "src" / "dashboard.py"),
+            str(ROOT_DIR / "src" / "dashboard" / "index.py"),
             "--server.headless=true",
             "--server.showEmailPrompt=false",
         ],
