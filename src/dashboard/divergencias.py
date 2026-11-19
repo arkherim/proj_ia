@@ -1,3 +1,4 @@
+import hashlib
 import textwrap
 
 import pandas as pd
@@ -104,6 +105,8 @@ def main() -> None:
         1, int(table["Comentário"].map(lambda comment: comment.count("\n") + 1).max())
     )
     row_height = max(72, max_comment_lines * 21 + 18)
+    editor_rows = "|".join(visible["review_id"].astype(str))
+    editor_suffix = hashlib.sha1(editor_rows.encode("utf-8")).hexdigest()[:12]
     with st.form("form_reclassificar_divergencias"):
         edited_table = st.data_editor(
             table,
@@ -125,7 +128,7 @@ def main() -> None:
                 ),
                 "Comentário": st.column_config.TextColumn(width="large"),
             },
-            key="editor_reclassificacoes",
+            key=f"editor_reclassificacoes_{page}_{editor_suffix}",
         )
         save_changes = st.form_submit_button("Salvar reclassificações", type="primary")
 
