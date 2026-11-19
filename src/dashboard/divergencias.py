@@ -1,3 +1,5 @@
+import textwrap
+
 import pandas as pd
 import streamlit as st
 
@@ -23,9 +25,6 @@ def main() -> None:
     if "confianca" not in reviews.columns:
         reviews = reviews.copy()
         reviews["confianca"] = pd.NA
-    if "sentimento_revisado" not in reviews.columns:
-        reviews = reviews.copy()
-        reviews["sentimento_revisado"] = pd.NA
     predicted = reviews["sentimento_previsto"].str.capitalize()
     divergent = reviews.loc[
         predicted.notna() & predicted.ne(reviews["sentimento_nota"])
@@ -83,22 +82,86 @@ def main() -> None:
     if "confianca" not in visible.columns:
         visible["confianca"] = pd.NA
 
-    table = visible[["data", "nota", "sentimento_nota", "sentimento_previsto", "confianca", "sentimento_revisado", "comentario"]].rename(
+    table = visible[["review_id", "data", "nota", "sentimento_nota", "sentimento_previsto", "confianca", "comentario", "sentimento_revisado"]].rename(
         columns={
-            "data": "Data", "nota": "Nota", "sentimento_nota": "Sentimento pela nota",
+            "review_id": "review_id", "data": "Data", "nota": "Nota", "sentimento_nota": "Sentimento pela nota",
             "sentimento_previsto": "Previsto", "confianca": "Confiança",
-            "sentimento_revisado": "Reclassificado como", "comentario": "Comentário",
+            "sentimento_revisado": "Sentimento correto", "comentario": "Comentário",
         }
     )
     table["Data"] = table["Data"].dt.strftime("%d/%m/%Y")
     table["Confiança"] = table["Confiança"].map(lambda value: f"{value:.1%}" if pd.notna(value) else "—")
-    st.table(
-        table.style.set_table_styles([
-            {"selector": "table", "props": [("width", "100%"), ("table-layout", "fixed")]},
-            {"selector": "th", "props": [("white-space", "normal"), ("word-break", "break-word")]},
-            {"selector": "td", "props": [("white-space", "normal"), ("overflow-wrap", "anywhere"), ("vertical-align", "top")]},
-        ]).set_properties(subset=["Comentário"], **{"width": "42%", "max-width": "540px"})
+    table["Comentário"] = table["Comentário"].fillna("").map(
+        lambda comment: textwrap.fill(
+            str(comment).replace("\r", " ").replace("\n", " "),
+            width=48,
+            break_long_words=True,
+            break_on_hyphens=False,
+        )
     )
+    table["Sentimento correto"] = table["Sentimento correto"].fillna("")
+    max_comment_lines = max(
+        1, int(table["Comentário"].map(lambda comment: comment.count("\n") + 1).max())
+    )
+    row_height = max(72, max_comment_lines * 21 + 18)
+    with st.form("form_reclassificar_divergencias"):
+        edited_table = st.data_editor(
+            table,
+            hide_index=True,
+            use_container_width=True,
+            row_height=row_height,
+            disabled=[
+                "review_id", "Data", "Nota", "Sentimento pela nota", "Previsto",
+                "Confiança", "Comentário",
+            ],
+            column_config={
+                "review_id": None,
+                "Sentimento correto": st.column_config.SelectboxColumn(
+                    "Sentimento correto",
+                    options=["", *LABELS],
+                    required=False,
+                    help="Selecione o rótulo correto para esta avaliação.",
+                    width="medium",
+                ),
+                "Comentário": st.column_config.TextColumn(width="large"),
+            },
+            key="editor_reclassificacoes",
+        )
+        save_changes = st.form_submit_button("Salvar reclassificações", type="primary")
+
+    if save_changes:
+        original_labels = visible.set_index("review_id")["sentimento_revisado"]
+        saved = 0
+        errors = []
+        for row in edited_table.to_dict("records"):
+            correct_label = str(row["Sentimento correto"]).strip()
+            if not correct_label:
+                continue
+            review_id = str(row["review_id"])
+            current_label = original_labels.get(review_id)
+            current_label = current_label.capitalize() if isinstance(current_label, str) else ""
+            if correct_label == current_label:
+                continue
+            selected = visible.loc[visible["review_id"].eq(review_id)].iloc[0]
+            confidence = float(selected["confianca"]) if pd.notna(selected["confianca"]) else None
+            try:
+                save_review_reclassification(
+                    review_id,
+                    str(selected["comentario"]),
+                    str(selected["sentimento_previsto"]).lower(),
+                    confidence,
+                    correct_label.lower(),
+                )
+                saved += 1
+            except Exception as error:
+                errors.append(f"{review_id}: {error}")
+        if errors:
+            st.error("Algumas reclassificações não foram salvas: " + "; ".join(errors))
+        elif saved:
+            st.toast(f"{saved} reclassificação(ões) salva(s).")
+            st.rerun()
+        else:
+            st.info("Nenhuma alteração nova para salvar.")
     previous, page_label, next_page = st.columns([1, 2, 1], vertical_alignment="center")
     with previous:
         if st.button("← Anterior", disabled=page <= 1, use_container_width=True):
@@ -110,47 +173,5 @@ def main() -> None:
         if st.button("Próxima →", disabled=page >= total_pages, use_container_width=True):
             st.session_state["divergencias_pagina"] = page + 1
             st.rerun()
-
-    st.divider()
-    st.subheader("Reclassificar comentário")
-    options = visible["review_id"].tolist()
-    selected_id = st.selectbox(
-        "Escolha uma avaliação desta página",
-        options,
-        format_func=lambda review_id: _review_option(visible, review_id),
-    )
-    selected = visible.loc[visible["review_id"].eq(selected_id)].iloc[0]
-    st.markdown(f"**Comentário:** {selected['comentario']}")
-    st.caption(
-        f"Nota: {selected['nota']} ({selected['sentimento_nota']}) · "
-        f"Previsão: {selected['sentimento_previsto']} · "
-        f"Confiança: {selected['confianca']:.1%}" if pd.notna(selected["confianca"])
-        else f"Nota: {selected['nota']} ({selected['sentimento_nota']}) · Previsão: {selected['sentimento_previsto']} · Confiança indisponível"
-    )
-    current_label = selected["sentimento_revisado"]
-    default_index = LABELS.index(current_label) if current_label in LABELS else 0
-    correct_label = st.selectbox(
-        "Sentimento correto do comentário", LABELS, index=default_index,
-        key=f"rotulo_divergencia_{selected_id}",
-    )
-    if st.button("Salvar reclassificação", type="primary"):
-        confidence = float(selected["confianca"]) if pd.notna(selected["confianca"]) else None
-        try:
-            save_review_reclassification(
-                str(selected_id), str(selected["comentario"]),
-                str(selected["sentimento_previsto"]).lower(), confidence,
-                correct_label.lower(),
-            )
-            st.success("Reclassificação salva e disponível para o próximo treinamento.")
-            st.rerun()
-        except Exception as error:
-            st.error(f"Não foi possível salvar a reclassificação: {error}")
-
-
-def _review_option(reviews: pd.DataFrame, review_id: str) -> str:
-    row = reviews.loc[reviews["review_id"].eq(review_id)].iloc[0]
-    snippet = str(row["comentario"]).replace("\n", " ")[:70]
-    return f"{row['sentimento_previsto']} ≠ {row['sentimento_nota']} · {snippet}"
-
 
 main()

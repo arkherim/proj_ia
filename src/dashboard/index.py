@@ -30,11 +30,11 @@ with period_filter:
     st.segmented_control("Período", periods, default=periods[0], key="periodo", label_visibility="collapsed", format_func=lambda value: "Tudo" if value == "Todos" else value)
 
 pages = [
-    st.Page("01_painel.py", title="Painel", icon="📊", default=True),
-    st.Page("02_modelo.py", title="Desempenho do modelo", icon="🧪"),
-    st.Page("03_comentarios.py", title="Comentários", icon="💬"),
-    st.Page("04_testar.py", title="Testar comentário", icon="✍️"),
-    st.Page("05_divergencias.py", title="Revisar divergências", icon="🔎"),
+    st.Page("painel.py", title="Painel", icon="📊", default=True),
+    st.Page("modelo.py", title="Desempenho do modelo", icon="🧪"),
+    st.Page("comentarios.py", title="Comentários", icon="💬"),
+    st.Page("testar.py", title="Testar comentário", icon="✍️"),
+    st.Page("divergencias.py", title="Revisar divergências", icon="🔎"),
 ]
-page = st.navigation(pages, position="top")
+page = st.navigation(pages, position="sidebar")
 page.run()
